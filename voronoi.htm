@@ -61,8 +61,8 @@ function render() {
 	// Clear SVG
 	svgDocument.style.width = size_w;
 	svgDocument.style.height = size_h;
-	while(svgDocument.children.length) {
-		svgDocument.removeChild(svgDocument.children[0]);
+	while(svgDocument.childNodes.length) {
+		svgDocument.removeChild(svgDocument.childNodes[0]);
 	}
   var shape = document.createElementNS("http://www.w3.org/2000/svg", "rect");
   shape.setAttributeNS(null, "x", 0);
