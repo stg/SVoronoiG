@@ -54,9 +54,9 @@ function init() {
 function render() {
 
 	// Fetch rendering parameters
-	var size_factor = 1.0 - (parseInt(document.getElementById("r_vertex").value) / 100);
-	var edge_factor = 1.0 - (parseInt(document.getElementById("r_bezier").value) / 100);
-	var join_factor =       (parseInt(document.getElementById("r_reduce").value) / 100);
+	var size_factor = 1.0 - (parseIntOr(document.getElementById("r_vertex").value, 0) / 100);
+	var edge_factor = 1.0 - (parseIntOr(document.getElementById("r_bezier").value, 0) / 100);
+	var join_factor =       (parseIntOr(document.getElementById("r_reduce").value, 0) / 100);
 	
 	// Clear SVG
 	svgDocument.style.width = size_w;
@@ -273,7 +273,7 @@ function key_state(e) {
 }
 
 function add_random() {
-	var count = parseInt(document.getElementById("randoms").value);
+	var count = parseIntOr(document.getElementById("randoms").value, 0);
 	for(var n = 0; n < count; n++) {
   	seeds[seeds.length] = {x:Math.random() * size_w, y:Math.random() * size_h};
 	}
@@ -281,8 +281,8 @@ function add_random() {
 
 function clear_all() {
 	seeds = new Array();
-	size_w = parseInt(document.getElementById("clear_w").value);
-	size_h = parseInt(document.getElementById("clear_h").value);
+	size_w = parseIntOr(document.getElementById("clear_w").value, 0);
+	size_h = parseIntOr(document.getElementById("clear_h").value, 0);
 }
 
 function save_svg() {
@@ -290,6 +290,11 @@ function save_svg() {
 	bb.append((new XMLSerializer).serializeToString(svgDocument));
 	var blob = bb.getBlob("image/svg+xml;charset=UTF-8;");
 	saveAs(blob, "document.svg");
+}
+
+function parseIntOr(v, def) {
+	v = parseInt(v);
+	return isNaN(v) ? def : v;
 }
 
 		</script>
