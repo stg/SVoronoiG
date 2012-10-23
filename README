@@ -1,0 +1,13 @@
+SVoronoiG
+=========
+
+Web-based Voronoi SVG generator
+Tested with Firefox ONLY!
+
+License: X11/MIT
+
+Voronoi algorithm by Raymond Hill
+File saving & blob building libraries by Eli Grey
+Inspired by the Voronoi Tool for Illustrator from Scriptographer.org
+
+Designed to generate SVG files for import into CorelDraw 12, which is the primary software used for our lasercutter

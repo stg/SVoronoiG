@@ -1,0 +1,318 @@
+<!--
+voronoi.htm
+Voronoi SVG generator
+2012-10-23
+
+By STG, http://wiki.forskningsavd.se/User:Stg
+License: X11/MIT
+
+Uses a voronoi algorithm by Raymond Hill and a file saving library by Eli Grey
+See corresponding .js files for more information
+-->
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:svg="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" xml:lang="en" lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<title>STG - Voronoi SVG generator</title>
+		<script src="rhill-voronoi-core.js"></script>
+		<script src="FileSaver.js"></script>
+		<script src="BlobBuilder.js"></script>
+		<script>
+
+// Configuration
+var size_w      = 800;
+var size_h      = 450;
+var seed_count  = 10;
+
+var seeds;
+var shift = false;
+var best_seed = 0;
+
+var timeout;
+var inside = false, last_x = -1, last_y = -1;
+
+var svgDocument;
+
+function Vertex(x, y) {
+	this.x = x;
+	this.y = y;
+}
+
+function init() {
+
+	// Create random seeds
+  seeds = new Array();
+	add_random();
+	
+	// Initialize SVG
+	svgDocument = document.getElementById("svgSurface");
+
+	// Start renderer
+	render();
+
+}
+
+function render() {
+
+	// Fetch rendering parameters
+	var size_factor = 1.0 - (parseInt(document.getElementById("r_vertex").value) / 100);
+	var edge_factor = 1.0 - (parseInt(document.getElementById("r_bezier").value) / 100);
+	var join_factor =       (parseInt(document.getElementById("r_reduce").value) / 100);
+	
+	// Clear SVG
+	svgDocument.style.width = size_w;
+	svgDocument.style.height = size_h;
+	while(svgDocument.children.length) {
+		svgDocument.removeChild(svgDocument.children[0]);
+	}
+  var shape = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+  shape.setAttributeNS(null, "x", 0);
+  shape.setAttributeNS(null, "y", 0);
+  shape.setAttributeNS(null, "width", size_w);
+  shape.setAttributeNS(null, "height", size_h);
+  shape.setAttributeNS(null, "fill", "white");
+  svgDocument.appendChild(shape);	
+	
+  try {
+		// Create voronoi map  
+	  var bbox = {xl:0, xr:size_w, yt:0, yb:size_h};
+	  var voronoi = new Voronoi();
+	  var result = voronoi.compute(seeds, bbox);
+	  var polys = new Array();
+	
+	  // Convert to polygon array
+	  for(var cell = 0; cell < result.cells.length; cell++) {
+	  	polys[cell] = new Array();
+	  	polys[cell][0] = new Vertex(
+	  		result.cells[cell].halfedges[0].getStartpoint().x,
+	  		result.cells[cell].halfedges[0].getStartpoint().y
+	  	)
+		  for(var edge = 0; edge < result.cells[cell].halfedges.length - 1; edge++) {
+		  	polys[cell][edge + 1] = new Vertex(
+		  		result.cells[cell].halfedges[edge].getEndpoint().x,
+		  		result.cells[cell].halfedges[edge].getEndpoint().y
+		  	)
+		  }
+	  }
+	/*
+	
+		// Straight render
+		var svgDocument = document.getElementById("svgSurface");
+	  for(var poly = 0; poly < polys.length; poly++) {
+	    var shape = document.createElementNS("http://www.w3.org/2000/svg", "path");
+	    var d = "";
+	    for(var v = 0; v < polys[poly].length; v++) {
+				d += (v == 0 ? "M" : " L") + " " + polys[poly][v].x.toString(10) + " " + polys[poly][v].y.toString(10);
+	    }
+	    d += " Z";
+	    shape.setAttributeNS(null, "d", d);
+	    shape.setAttributeNS(null, "fill", "#7fff7f");
+	    shape.setAttributeNS(null, "stroke", "blue");
+	    shape.setAttributeNS(null, "stroke-width", "3");
+	    alert(d);
+	    svgDocument.appendChild(shape);	
+	  }
+	*/
+	
+	  // Shrink polygons
+	  for(var poly = 0; poly < polys.length; poly++) {
+	    var xack = 0, yack = 0;
+	    for(var v = 0; v < polys[poly].length; v++) {
+	    	xack += polys[poly][v].x;
+	    	yack += polys[poly][v].y;
+	    }
+	    xack /= polys[poly].length;
+	    yack /= polys[poly].length;
+	    for(var v = 0; v < polys[poly].length; v++) {
+	    	polys[poly][v].x = ((polys[poly][v].x - xack) * size_factor) + xack;
+	    	polys[poly][v].y = ((polys[poly][v].y - yack) * size_factor) + yack;
+	    }
+		}
+		
+		// Reduce polygons
+		for(var poly = 0; poly < polys.length; poly++) {
+	    var avg_dist = 0;
+	    for(var v = 0; v < polys[poly].length; v++) {
+				avg_dist += Math.sqrt(
+					  Math.pow(polys[poly][v].x - polys[poly][(v + 1) % polys[poly].length].x, 2)
+					+ Math.pow(polys[poly][v].y - polys[poly][(v + 1) % polys[poly].length].y, 2)
+				);
+	    }
+	    avg_dist /= polys[poly].length;
+			while(polys[poly].length > 3) {
+				var best_dist = Math.sqrt(
+					  Math.pow(polys[poly][0].x - polys[poly][1].x, 2)
+					+ Math.pow(polys[poly][0].y - polys[poly][1].y, 2)
+				);
+		    var best_pair = 0;
+		    for(var v = 1; v < polys[poly].length; v++) {
+					var dist = Math.sqrt(
+						  Math.pow(polys[poly][v].x - polys[poly][(v + 1) % polys[poly].length].x, 2)
+						+ Math.pow(polys[poly][v].y - polys[poly][(v + 1) % polys[poly].length].y, 2)
+					);
+					if(dist < best_dist) {
+						best_dist = dist;
+						best_pair = v;
+					}
+		    }
+		    if(best_dist > avg_dist * join_factor) break;
+		    polys[poly][best_pair].x = (polys[poly][best_pair].x + polys[poly][(best_pair + 1) % polys[poly].length].x) / 2;
+		    polys[poly][best_pair].y = (polys[poly][best_pair].y + polys[poly][(best_pair + 1) % polys[poly].length].y) / 2;
+		    polys[poly].splice((best_pair + 1) % polys[poly].length, 1);
+		  }
+		}
+	
+		// Bezier render
+	  for(var poly = 0; poly < polys.length; poly++) {
+	    var shape = document.createElementNS("http://www.w3.org/2000/svg", "path");
+	    var d = "";
+			var cc;
+	    for(var v = 0; v < polys[poly].length + 1; v++) {
+	    	var va = v % polys[poly].length;
+	    	var vb = (va + 1) % polys[poly].length;
+	    	var lc = cc;
+	    	cc = new Vertex(
+	    		(polys[poly][va].x + polys[poly][vb].x) / 2,
+	    		(polys[poly][va].y + polys[poly][vb].y) / 2
+	    	);
+				if(v == 0 ) {
+					d += "M" + (Math.floor(cc.x * 100) / 100).toString(10)
+					d += " " + (Math.floor(cc.y * 100) / 100).toString(10);
+				} else {
+					var ca = new Vertex(
+						(polys[poly][va].x - lc.x) * edge_factor + lc.x,
+						(polys[poly][va].y - lc.y) * edge_factor + lc.y
+					);
+					var cb = new Vertex(
+						(polys[poly][va].x - cc.x) * edge_factor + cc.x,
+						(polys[poly][va].y - cc.y) * edge_factor + cc.y
+					);
+					d += "C" + (Math.floor(ca.x * 100) / 100).toString(10);
+					d += " " + (Math.floor(ca.y * 100) / 100).toString(10);
+					d += " " + (Math.floor(cb.x * 100) / 100).toString(10);
+					d += " " + (Math.floor(cb.y * 100) / 100).toString(10);
+					d += " " + (Math.floor(cc.x * 100) / 100).toString(10);
+					d += " " + (Math.floor(cc.y * 100) / 100).toString(10);
+				}
+	    }
+	    
+	    shape.setAttributeNS(null, "d", d);
+	    shape.setAttributeNS(null, "fill", "#efefef");
+	    shape.setAttributeNS(null, "stroke", "3f3f3f");
+	    shape.setAttributeNS(null, "stroke-width", "1");
+	    svgDocument.appendChild(shape);	
+	  }
+	} catch(e) {
+		// Silently fail
+	}
+
+	try {
+		// Render seeds
+		if(shift || seeds.length < 2) {
+			var best_dist = Math.sqrt(Math.pow(seeds[0].x - last_x, 2) + Math.pow(seeds[0].y - last_y, 2));
+			best_seed = -1;
+			for(var seed = 0; seed < seeds.length; seed++) {
+				var dist = Math.sqrt(Math.pow(seeds[seed].x - last_x, 2) + Math.pow(seeds[seed].y - last_y, 2));
+				if(dist <= best_dist) {
+					best_dist = dist;
+					best_seed = seed;
+				}
+			}
+			
+			for(var seed = 0; seed < seeds.length; seed++) {
+		    var shape = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+		    shape.setAttributeNS(null, "cx", seeds[seed].x);
+		    shape.setAttributeNS(null, "cy", seeds[seed].y);
+		    shape.setAttributeNS(null, "r", seed == best_seed ? 3 : 1.5);
+		    shape.setAttributeNS(null, "fill", seed == best_seed ? "red" : "blue");
+		    svgDocument.appendChild(shape);
+		  }
+		}
+	}	catch(E) {
+		// Silently fail
+	}
+
+	window.setTimeout(render, 10);  
+}
+
+function is_inside() {
+	if(last_x >= 0 && last_x < size_w && last_y >= 0 && last_y < size_h && !shift) {
+		if(!inside) {
+			seeds[seeds.length] = {x:last_x, y:last_y};
+			inside = true;
+		}
+	} else {
+		if(inside) {
+			inside = false;
+			seeds.splice(seeds.length - 1, 1);
+		}
+	}
+	return inside;
+}
+
+function mouse_move(e) {
+	last_x = e.clientX;
+	last_y = e.clientY;
+	if(is_inside()) {
+			seeds[seeds.length - 1] = {x:last_x, y:last_y};
+	}
+}
+
+function mouse_click(e) {
+  	if(inside || shift) {
+	  	if(shift && seeds.length && best_seed >= 0) {
+	  		seeds.splice(best_seed, 1);
+	  	} else {
+		  	seeds[seeds.length] = {x:e.clientX, y:e.clientY};
+		  }
+		}
+}
+
+function key_state(e) {
+	shift = e.shiftKey;
+	is_inside();
+}
+
+function add_random() {
+	var count = parseInt(document.getElementById("randoms").value);
+	for(var n = 0; n < count; n++) {
+  	seeds[seeds.length] = {x:Math.random() * size_w, y:Math.random() * size_h};
+	}
+}
+
+function clear_all() {
+	seeds = new Array();
+	size_w = parseInt(document.getElementById("clear_w").value);
+	size_h = parseInt(document.getElementById("clear_h").value);
+}
+
+function save_svg() {
+	var bb = new BlobBuilder();
+	bb.append((new XMLSerializer).serializeToString(svgDocument));
+	var blob = bb.getBlob("image/svg+xml;charset=UTF-8;");
+	saveAs(blob, "document.svg");
+}
+
+		</script>
+	</head>
+	<body onload="init();" onkeydown="key_state(event);" onkeyup="key_state(event);" onmousemove="mouse_move(event);" onmousedown="mouse_click(event);" style="font-family:verdana;background:#e0e0e0;">
+		<div style="position:absolute;left:0;top:0;width:100%;background:#e0e0e0;">
+			<svg id="svgSurface" xmlns="http://www.w3.org/2000/svg" version="1.1">
+			</svg>
+			<div style="margin-top:8px;">
+				Click to add a seed, shift-click to remove a seed.<br>
+				If you need to zoom, use the browsers built-in zoom function - usually ctrl+mouse wheel.<br>
+			</div>
+			<table border="0" cellspacing="8" cellpadding="0"><tr><td valign="top">
+				<div style="margin-top:8px;"><button onclick="add_random();">Add</button><input id="randoms" type="text" value="10" style="width:60px;margin-left:4px;"> random seeds</div>
+				<div style="margin-top:8px;"><button onclick="clear_all();">Clear</button> scene to size <input id="clear_w" type="text" value="800" style="width:60px;margin-left:4px;">x<input id="clear_h" type="text" value="450" style="width:60px;"></div>
+				<div style="margin-top:8px;"><button onclick="save_svg();">Save</button> scene as SVG</div>
+			</td><td valign="top">
+				<div style="margin-top:8px;">Rendering parameters - normally 0-100, but negative or large values can produce interesting results</div>
+				<div style="margin-top:8px;">Vertex retraction: </button><input id="r_vertex" type="text" value="5" style="width:60px;margin-left:4px;">%</div>
+				<div style="margin-top:8px;">Bezier retraction: </button><input id="r_bezier" type="text" value="0" style="width:60px;margin-left:4px;">%</div>
+				<div style="margin-top:8px;">Remove vertices in close proximity - 0-200</div>
+				<div style="margin-top:8px;">Vertex culling: </button><input id="r_reduce" type="text" value="15" style="width:60px;margin-left:4px;">%</div>
+			</td></tr></table>
+		</div>
+	</body>
+</html>
